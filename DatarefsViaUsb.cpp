@@ -60,7 +60,7 @@ void Connect(LPCSTR portName) {
 		};
 		SetCommTimeouts(hComm, &timeouts);
 
-		connection_t conn = { portName, hComm, {} };
+		connection_t conn = { portName, hComm, {}, {0}, 0 };
 		connections.push_back(conn);
 		SendInit(conn.handle);
 	}
@@ -127,38 +127,62 @@ static void UpdateDatarefs(connection_t *conn) {
 	}
 }
 
+static sint16 findNullTerminator(uint8* ptr, uint8 maxLength) {
+	for (uint8 i = 0; i < maxLength; i++) {
+		if (*ptr == 0) {
+			return i;
+		}
+		ptr++;
+	}
+	return -1;
+}
+
 static void HandleInput(connection_t *conn) {
-	uint8 readBuffer[BUFFER_SIZE] = { 0 };
 	DWORD bytesRead = 0;
-	ReadFile(conn->handle, &readBuffer, BUFFER_SIZE, &bytesRead, NULL);
+	ReadFile(conn->handle, &(conn->buffer[conn->buffer_usage]), BUFFER_SIZE-conn->buffer_usage, &bytesRead, NULL);
 	if (bytesRead > 0) {
-		switch ((messageFromClient_t)readBuffer[0]) {
+		conn->buffer_usage += bytesRead;
+
+		switch ((messageFromClient_t)conn->buffer[0]) {
 		case SUBSCRIBE: 
 			{
-				dataref_t dataref = {};
-				dataref.type = (datatype_t)readBuffer[1];
-				strncpy(dataref.label, (const char*)&readBuffer[2], min(bytesRead - 2, MAX_DATAREF_LABEL_LENGTH));
-				dataref.handle = XPLMFindDataRef(dataref.label);
-				if (dataref.handle != NULL) {
-					dataref.value = ReadDatarefValue(&dataref);
-					conn->datarefs.push_back(dataref);
-					SendDatarefUpdate(conn->handle, conn->datarefs.size() - 1, &dataref);
+				bool processBuffer = conn->buffer_usage > 2;
+				while (processBuffer) {
+					sint16 terminatorIdx = findNullTerminator(&(conn->buffer[2]), conn->buffer_usage - 2);
+					if (terminatorIdx >= 0) {
+						dataref_t dataref = {};
+						dataref.type = (datatype_t)conn->buffer[1];
+						strncpy(dataref.label, (const char*)&(conn->buffer[2]), min(terminatorIdx + 1, MAX_DATAREF_LABEL_LENGTH));
+						dataref.handle = XPLMFindDataRef(dataref.label);
+						if (dataref.handle != NULL) {
+							dataref.value = ReadDatarefValue(&dataref);
+							conn->datarefs.push_back(dataref);
+							SendDatarefUpdate(conn->handle, conn->datarefs.size() - 1, &dataref);
+						}
+						memmove(&(conn->buffer), &(conn->buffer[3 + terminatorIdx]), conn->buffer_usage - terminatorIdx - 3);
+						conn->buffer_usage -= terminatorIdx + 3;
+						processBuffer = conn->buffer_usage > 2;
+					}
+					else {
+						//did not yet receive the end of the dataref label (no null terminator)
+						processBuffer = false;
+					}
 				}
 				break;
 			}
 		case COMMAND: 
 			{
-				XPLMCommandRef cmdHandle = XPLMFindCommand((const char*)&readBuffer[1]);
+				XPLMCommandRef cmdHandle = XPLMFindCommand((const char*)&conn->buffer[1]);
 				if (cmdHandle != NULL)
 					XPLMCommandOnce(cmdHandle);
 				break;
 			}
 		case SET_DATAREF: 
 			{
-				datatype_t type = (datatype_t)readBuffer[1];
+				datatype_t type = (datatype_t)conn->buffer[1];
 				datarefValue_t value = 0;
-				memcpy((uint8*)&value, &readBuffer[2], sizeof(datarefValue_t));
-				XPLMDataRef datarefHandle = XPLMFindDataRef((const char*)&readBuffer[1 + sizeof(datarefValue_t)]);
+				memcpy((uint8*)&value, &conn->buffer[2], sizeof(datarefValue_t));
+				XPLMDataRef datarefHandle = XPLMFindDataRef((const char*)&conn->buffer[1 + sizeof(datarefValue_t)]);
 				if (datarefHandle != NULL) {
 					WriteDatarefValue(datarefHandle, type, value);
 				}
@@ -206,7 +230,7 @@ PLUGIN_API void XPluginDisable(void) {
 }
 
 PLUGIN_API int XPluginEnable(void)  { 
-	Connect("\\\\.\\COM4"); //TODO: Allow to define connections via GUI
+	Connect("\\\\.\\COM6"); //TODO: Allow to define connections via GUI
 	XPLMRegisterFlightLoopCallback(MyFlightLoopCallback, 0.01f, NULL);
 	return 1;
 }

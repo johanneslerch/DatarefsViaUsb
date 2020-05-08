@@ -7,6 +7,7 @@
 #include "stdlib.h"
 #include "string.h"
 
+typedef signed char sint8;
 typedef unsigned char uint8;
 typedef unsigned short uint16;
 typedef signed short sint16;
@@ -15,7 +16,7 @@ typedef signed int sint32;
 typedef sint32 datarefValue_t;
 
 #define MAX_DATAREF_LABEL_LENGTH 128u
-#define BUFFER_SIZE 256u
+#define BUFFER_SIZE 255u
 
 typedef enum {
 	INT_4BYTES,
@@ -33,6 +34,8 @@ typedef struct {
 	LPCSTR portName;
 	HANDLE handle;
 	std::list<dataref_t> datarefs;
+	uint8 buffer[BUFFER_SIZE];
+	uint8 buffer_usage;
 } connection_t;
 
 typedef enum {
