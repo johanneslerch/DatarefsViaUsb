@@ -46,7 +46,7 @@ void Connect(LPCSTR portName) {
 		dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
 		BOOL Status = GetCommState(hComm, &dcbSerialParams);
 
-		dcbSerialParams.BaudRate = CBR_128000;  // Setting BaudRate
+		dcbSerialParams.BaudRate = CBR_115200;  // Setting BaudRate
 		dcbSerialParams.ByteSize = 8;         // Setting ByteSize = 8
 		dcbSerialParams.StopBits = ONESTOPBIT;// Setting StopBits = 1
 		dcbSerialParams.Parity = NOPARITY;  // Setting Parity = None
@@ -90,15 +90,20 @@ static datarefValue_t ReadDatarefValue(dataref_t *dataref) {
 }
 
 static void WriteDatarefValue(XPLMDataRef handle, datatype_t type, datarefValue_t value) {
-	switch (type) {
-	case INT_4BYTES:
-		XPLMSetDatai(handle, value);
-		break;
-	case FLOAT_4BYTES:
-		float floatValue = 0.0f;
-		memcpy((uint8*)&floatValue, (uint8*)&value, sizeof(datarefValue_t));
-		XPLMSetDataf(handle, floatValue);
-		break;
+	if (XPLMCanWriteDataRef(handle)) {
+		switch (type) {
+		case INT_4BYTES:
+			XPLMSetDatai(handle, value);
+			break;
+		case FLOAT_4BYTES:
+			float floatValue = 0.0f;
+			memcpy((uint8*)&floatValue, (uint8*)&value, sizeof(datarefValue_t));
+			XPLMSetDataf(handle, floatValue);
+			break;
+		}
+	}
+	else {
+		// oops
 	}
 }
 
@@ -194,17 +199,17 @@ static void HandleInput(connection_t *conn) {
 				}
 			case SET_DATAREF: 
 				if (conn->buffer_usage > 2+sizeof(datarefValue_t)) {
-					sint16 terminatorIdx = findNullTerminator(&(conn->buffer[1+sizeof(datarefValue_t)]), conn->buffer_usage - 1 - sizeof(datarefValue_t));
+					sint16 terminatorIdx = findNullTerminator(&(conn->buffer[2+sizeof(datarefValue_t)]), conn->buffer_usage - 2 - sizeof(datarefValue_t));
 					if (terminatorIdx >= 0) {
 						datatype_t type = (datatype_t)conn->buffer[1];
 						datarefValue_t value = 0;
 						memcpy((uint8*)&value, &conn->buffer[2], sizeof(datarefValue_t));
-						XPLMDataRef datarefHandle = XPLMFindDataRef((const char*)&conn->buffer[1 + sizeof(datarefValue_t)]);
+						XPLMDataRef datarefHandle = XPLMFindDataRef((const char*)&conn->buffer[2 + sizeof(datarefValue_t)]);
 						if (datarefHandle != NULL) {
 							WriteDatarefValue(datarefHandle, type, value);
 						}
-						memmove(&(conn->buffer), &(conn->buffer[2 + sizeof(datarefValue_t) + terminatorIdx]), conn->buffer_usage - terminatorIdx - 2 - sizeof(datarefValue_t));
-						conn->buffer_usage -= terminatorIdx + 2 + sizeof(datarefValue_t);
+						memmove(&(conn->buffer), &(conn->buffer[3 + sizeof(datarefValue_t) + terminatorIdx]), conn->buffer_usage - terminatorIdx - 3 - sizeof(datarefValue_t));
+						conn->buffer_usage -= terminatorIdx + 3 + sizeof(datarefValue_t);
 						continueProcessing = conn->buffer_usage > 0;
 					}
 					else {
