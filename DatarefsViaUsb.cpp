@@ -142,12 +142,11 @@ static void HandleInput(connection_t *conn) {
 	ReadFile(conn->handle, &(conn->buffer[conn->buffer_usage]), BUFFER_SIZE-conn->buffer_usage, &bytesRead, NULL);
 	if (bytesRead > 0) {
 		conn->buffer_usage += bytesRead;
-
-		switch ((messageFromClient_t)conn->buffer[0]) {
-		case SUBSCRIBE: 
-			{
-				bool processBuffer = conn->buffer_usage > 2;
-				while (processBuffer) {
+		bool continueProcessing = false;
+		do {
+			switch ((messageFromClient_t)conn->buffer[0]) {
+			case SUBSCRIBE: 
+				if(conn->buffer_usage > 3) {
 					sint16 terminatorIdx = findNullTerminator(&(conn->buffer[2]), conn->buffer_usage - 2);
 					if (terminatorIdx >= 0) {
 						dataref_t dataref = {};
@@ -161,34 +160,64 @@ static void HandleInput(connection_t *conn) {
 						}
 						memmove(&(conn->buffer), &(conn->buffer[3 + terminatorIdx]), conn->buffer_usage - terminatorIdx - 3);
 						conn->buffer_usage -= terminatorIdx + 3;
-						processBuffer = conn->buffer_usage > 2;
+						continueProcessing = conn->buffer_usage > 0;
 					}
 					else {
 						//did not yet receive the end of the dataref label (no null terminator)
-						processBuffer = false;
+						continueProcessing = false;
 					}
 				}
-				break;
-			}
-		case COMMAND: 
-			{
-				XPLMCommandRef cmdHandle = XPLMFindCommand((const char*)&conn->buffer[1]);
-				if (cmdHandle != NULL)
-					XPLMCommandOnce(cmdHandle);
-				break;
-			}
-		case SET_DATAREF: 
-			{
-				datatype_t type = (datatype_t)conn->buffer[1];
-				datarefValue_t value = 0;
-				memcpy((uint8*)&value, &conn->buffer[2], sizeof(datarefValue_t));
-				XPLMDataRef datarefHandle = XPLMFindDataRef((const char*)&conn->buffer[1 + sizeof(datarefValue_t)]);
-				if (datarefHandle != NULL) {
-					WriteDatarefValue(datarefHandle, type, value);
+				else {
+					continueProcessing = false;
 				}
 				break;
+			case COMMAND: 
+				if (conn->buffer_usage > 2) {
+					sint16 terminatorIdx = findNullTerminator(&(conn->buffer[1]), conn->buffer_usage - 1);
+					if (terminatorIdx >= 0) {
+						XPLMCommandRef cmdHandle = XPLMFindCommand((const char*)&conn->buffer[1]);
+						if (cmdHandle != NULL)
+							XPLMCommandOnce(cmdHandle);
+
+						memmove(&(conn->buffer), &(conn->buffer[2 + terminatorIdx]), conn->buffer_usage - terminatorIdx - 2);
+						conn->buffer_usage -= terminatorIdx + 2;
+						continueProcessing = conn->buffer_usage > 0;
+					}
+					else {
+						//did not yet receive the end of the command label (no null terminator)
+						continueProcessing = false;
+					}
+					break;
+				}
+				else {
+					continueProcessing = false;
+				}
+			case SET_DATAREF: 
+				if (conn->buffer_usage > 2+sizeof(datarefValue_t)) {
+					sint16 terminatorIdx = findNullTerminator(&(conn->buffer[1+sizeof(datarefValue_t)]), conn->buffer_usage - 1 - sizeof(datarefValue_t));
+					if (terminatorIdx >= 0) {
+						datatype_t type = (datatype_t)conn->buffer[1];
+						datarefValue_t value = 0;
+						memcpy((uint8*)&value, &conn->buffer[2], sizeof(datarefValue_t));
+						XPLMDataRef datarefHandle = XPLMFindDataRef((const char*)&conn->buffer[1 + sizeof(datarefValue_t)]);
+						if (datarefHandle != NULL) {
+							WriteDatarefValue(datarefHandle, type, value);
+						}
+						memmove(&(conn->buffer), &(conn->buffer[2 + sizeof(datarefValue_t) + terminatorIdx]), conn->buffer_usage - terminatorIdx - 2 - sizeof(datarefValue_t));
+						conn->buffer_usage -= terminatorIdx + 2 + sizeof(datarefValue_t);
+						continueProcessing = conn->buffer_usage > 0;
+					}
+					else {
+						//did not yet receive the end of the dataref label (no null terminator)
+						continueProcessing = false;
+					}
+					break;
+				}
+				else {
+					continueProcessing = false;
+				}
 			}
-		}
+		} while (continueProcessing);
 	}
 }
 
