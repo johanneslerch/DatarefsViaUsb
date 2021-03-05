@@ -15,7 +15,7 @@ static void Send(HANDLE handle, uint8 data[], uint8 dataLength) {
 
 static void SendInit(HANDLE handle) {
 	uint8 data[1] = { INIT };
-	Send(handle, data, 1u);
+	Send(handle, data, 1);	
 }
 
 static void SendDatarefUpdate(HANDLE handle, uint8 datarefIndex, dataref_t *dataref) {
@@ -60,7 +60,7 @@ void Connect(LPCSTR portName) {
 		};
 		SetCommTimeouts(hComm, &timeouts);
 
-		connection_t conn = { portName, hComm, {}, {0}, 0 };
+		connection_t conn = { portName, hComm, {}, {0}, 0, false };
 		connections.push_back(conn);
 		SendInit(conn.handle);
 	}
@@ -147,6 +147,14 @@ static void HandleInput(connection_t *conn) {
 	ReadFile(conn->handle, &(conn->buffer[conn->buffer_usage]), BUFFER_SIZE-conn->buffer_usage, &bytesRead, NULL);
 	if (bytesRead > 0) {
 		conn->buffer_usage += bytesRead;
+		
+		if (!conn->initialized) {
+			if ((messageFromClient_t)conn->buffer[0] != SUBSCRIBE) {
+				SendInit(conn->handle);
+			}
+			conn->initialized = true;
+		}
+
 		bool continueProcessing = false;
 		do {
 			switch ((messageFromClient_t)conn->buffer[0]) {

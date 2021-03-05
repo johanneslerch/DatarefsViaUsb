@@ -16,7 +16,7 @@ typedef signed int sint32;
 typedef sint32 datarefValue_t;
 
 #define MAX_DATAREF_LABEL_LENGTH 128u
-#define BUFFER_SIZE 255u
+#define BUFFER_SIZE 128u
 
 typedef enum {
 	INT_4BYTES,
@@ -36,6 +36,7 @@ typedef struct {
 	std::list<dataref_t> datarefs;
 	uint8 buffer[BUFFER_SIZE];
 	uint8 buffer_usage;
+	bool initialized;
 } connection_t;
 
 typedef enum {
