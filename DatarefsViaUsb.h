@@ -47,5 +47,7 @@ typedef enum {
 typedef enum {
 	SUBSCRIBE, //messages must be followed by 1 byte representing the datatype_t, then a string representing the name of the dataref
 	COMMAND, //messages must be followed by string representing the name of the command
-	SET_DATAREF //messages must be followed by 1 byte representing the datatype_t, sizeof(datarefValue_t) bytes representing the new value, then a string representing the name of the dataref
+	SET_DATAREF, //messages must be followed by 1 byte representing the datatype_t, sizeof(datarefValue_t) bytes representing the new value, then a string representing the name of the dataref
+	BEGIN_COMMAND, //messages must be followed by string representing the name of the command
+	END_COMMAND, //messages must be followed by string representing the name of the command
 } messageFromClient_t;

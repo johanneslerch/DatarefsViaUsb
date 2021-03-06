@@ -185,12 +185,25 @@ static void HandleInput(connection_t *conn) {
 				}
 				break;
 			case COMMAND: 
+			case BEGIN_COMMAND:
+			case END_COMMAND:
 				if (conn->buffer_usage > 2) {
 					sint16 terminatorIdx = findNullTerminator(&(conn->buffer[1]), conn->buffer_usage - 1);
 					if (terminatorIdx >= 0) {
 						XPLMCommandRef cmdHandle = XPLMFindCommand((const char*)&conn->buffer[1]);
-						if (cmdHandle != NULL)
-							XPLMCommandOnce(cmdHandle);
+						if (cmdHandle != NULL) {
+							switch ((messageFromClient_t)conn->buffer[0]) {
+							case COMMAND:
+								XPLMCommandOnce(cmdHandle);
+								break;
+							case BEGIN_COMMAND:
+								XPLMCommandBegin(cmdHandle);
+								break;
+							case END_COMMAND:
+								XPLMCommandEnd(cmdHandle);
+								break;
+							}
+						}
 
 						memmove(&(conn->buffer), &(conn->buffer[2 + terminatorIdx]), conn->buffer_usage - terminatorIdx - 2);
 						conn->buffer_usage -= terminatorIdx + 2;
